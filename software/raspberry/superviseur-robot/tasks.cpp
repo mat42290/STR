@@ -82,6 +82,10 @@ void Tasks::Init() {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_mutex_create(&mutex_comFailure, NULL)) {
+        cerr << "Error mutex create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
     cout << "Mutexes created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -360,12 +364,10 @@ void Tasks::StartRobotTask(void *arg) {
         Message * msgSend;
         rt_sem_p(&sem_startRobot, TM_INFINITE);
         cout << "Start robot without watchdog (";
-        rt_mutex_acquire(&mutex_robot, TM_INFINITE);
-        msgSend = robot.Write(robot.StartWithoutWD());
-        rt_mutex_release(&mutex_robot);
+        msgSend = WriteToRobot(robot.StartWithoutWD());
         cout << msgSend->GetID();
         cout << ")" << endl;
-
+            
         cout << "Movement answer: " << msgSend->ToString() << endl << flush;
         WriteInQueue(&q_messageToMon, msgSend);  // msgSend will be deleted by sendToMon
 
@@ -406,15 +408,13 @@ void Tasks::MoveTask(void *arg) {
             
             cout << " move: " << cpMove << endl << flush;
             
-            rt_mutex_acquire(&mutex_robot, TM_INFINITE);
-            robot.Write(new Message((MessageID)cpMove));
-            rt_mutex_release(&mutex_robot);
+            Message* answer = WriteToRobot(new Message((MessageID)cpMove));
         }
     }
 }
 
 /**
-   * @brief Thread handling battery level of the rbbot.
+   * @brief Thread handling battery level of the robot.
 */
 void Tasks::BatteryTask(void *arg) {
     int rs;
@@ -434,14 +434,12 @@ void Tasks::BatteryTask(void *arg) {
         rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
         rs = robotStarted;
         rt_mutex_release(&mutex_robotStarted);
-        if (rs == 1 && false) {
-            rt_mutex_acquire(&mutex_robot, TM_INFINITE);
-            Message* batteryLevel = robot.Write(new Message(MESSAGE_ROBOT_BATTERY_GET));
-            rt_mutex_release(&mutex_robot);
-            
+        if (rs == 1) {
+            Message* batteryLevel = WriteToRobot(new Message(MESSAGE_ROBOT_BATTERY_GET));
             cout << "Battery level:" << batteryLevel->ToString() << endl << flush;
+            
             // On ne forward pas le message si c'est un message d'erreur sinon on perd la connection
-            if(!batteryLevel->CompareID(MESSAGE_ANSWER_ROBOT_ERROR)) {
+            if(!batteryLevel->CompareID(MESSAGE_ANSWER_ROBOT_ERROR) && !batteryLevel->CompareID(MESSAGE_ANSWER_ROBOT_TIMEOUT)) {
                WriteInQueue(&q_messageToMon, batteryLevel);  // msgSend will be deleted by sendToMon
             }
         }
@@ -470,6 +468,49 @@ void Tasks::StartCameraTask(void *arg) {
             cout << "Camera start fail" << endl << flush;
         }
     }
+}
+    
+Message* Tasks::WriteToRobot(Message * msg){
+    int status;
+    int cf;
+    
+    rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+    Message* answer = robot.Write(msg);
+    cout << "Count comFailure: " << comFailure << endl << flush;
+    if(answer->CompareID(MESSAGE_ANSWER_ROBOT_ERROR) ||
+        answer->CompareID(MESSAGE_ANSWER_ROBOT_TIMEOUT)){
+        
+        rt_mutex_acquire(&mutex_comFailure, TM_INFINITE);
+        comFailure++;
+        cf = comFailure;
+        rt_mutex_release(&mutex_comFailure);
+        
+        if(cf>3){
+            cout << endl << endl << endl;
+            cout << "More than 3 consecutives failures, restart" << endl<< flush;
+            cout << endl << endl << endl << flush;
+            
+            Message * msgSend;
+            msgSend = new Message(MESSAGE_MONITOR_LOST);
+            WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon
+            
+            cout << "Close serial com (";
+            rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+            status = robot.Close();
+            rt_mutex_release(&mutex_robot);
+            cout << status;
+            cout << ")" << endl << flush;
+            
+            rt_mutex_acquire(&mutex_comFailure, TM_INFINITE);
+            comFailure = 0;
+            rt_mutex_release(&mutex_comFailure);
+        }
+    }
+    else{
+        comFailure = 0;
+    }
+    rt_mutex_release(&mutex_robot);
+    return answer;
 }
 
 /**

@@ -65,6 +65,8 @@ private:
     ComMonitor monitor;
     ComRobot robot;
     int robotStarted = 0;
+    int cameraOn = 0;
+    int comFailure = 0;
     int move = MESSAGE_ROBOT_STOP;
     Camera camera;
     bool cameraStarted = false;
@@ -90,6 +92,7 @@ private:
     RT_MUTEX mutex_move;
     RT_MUTEX mutex_camera;
     RT_MUTEX mutex_cameraStarted;
+    RT_MUTEX mutex_comFailure;
 
     /**********************************************************************/
     /* Semaphores                                                         */
@@ -148,6 +151,8 @@ private:
      * @brief Thread starting the communication with the camera.
      */
     void StartCameraTask(void *arg);
+    
+    Message* WriteToRobot(Message * msg);
     
     /**********************************************************************/
     /* Queue services                                                     */
