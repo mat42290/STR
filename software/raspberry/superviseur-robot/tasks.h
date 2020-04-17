@@ -65,6 +65,8 @@ private:
     ComMonitor monitor;
     ComRobot robot;
     int robotStarted = 0;
+    int cameraOn = 0;
+    int comFailure = 0;
     int move = MESSAGE_ROBOT_STOP;
     
     /**********************************************************************/
@@ -85,6 +87,8 @@ private:
     RT_MUTEX mutex_robot;
     RT_MUTEX mutex_robotStarted;
     RT_MUTEX mutex_move;
+    RT_MUTEX mutex_comFailure;
+    RT_MUTEX mutex_cameraOn;
 
     /**********************************************************************/
     /* Semaphores                                                         */
@@ -134,9 +138,11 @@ private:
     void MoveTask(void *arg);
     
     /**
-     * @brief Thread handling battery level of the rbbot.
+     * @brief Thread handling battery level of the robot.
      */
     void BatteryTask(void *arg);
+    
+    Message* WriteToRobot(Message * msg);
     
     /**********************************************************************/
     /* Queue services                                                     */
