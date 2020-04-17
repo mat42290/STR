@@ -67,6 +67,7 @@ private:
     int robotStarted = 0;
     int cameraOn = 0;
     int comFailure = 0;
+    int withWD = 0;
     int move = MESSAGE_ROBOT_STOP;
     
     /**********************************************************************/
@@ -79,6 +80,7 @@ private:
     RT_TASK th_startRobot;
     RT_TASK th_move;
     RT_TASK th_batteryLevel;
+    RT_TASK th_watchdogReset;
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -89,6 +91,7 @@ private:
     RT_MUTEX mutex_move;
     RT_MUTEX mutex_comFailure;
     RT_MUTEX mutex_cameraOn;
+    RT_MUTEX mutex_withWD;
 
     /**********************************************************************/
     /* Semaphores                                                         */
@@ -141,6 +144,8 @@ private:
      * @brief Thread handling battery level of the robot.
      */
     void BatteryTask(void *arg);
+    
+    void WatchdogResetTask(void * arg);
     
     Message* WriteToRobot(Message * msg);
     
