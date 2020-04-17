@@ -66,6 +66,8 @@ private:
     ComRobot robot;
     int robotStarted = 0;
     int move = MESSAGE_ROBOT_STOP;
+    Camera camera;
+    bool cameraStarted = false;
     
     /**********************************************************************/
     /* Tasks                                                              */
@@ -77,6 +79,7 @@ private:
     RT_TASK th_startRobot;
     RT_TASK th_move;
     RT_TASK th_batteryLevel;
+    RT_TASK th_startCamera;
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -85,6 +88,8 @@ private:
     RT_MUTEX mutex_robot;
     RT_MUTEX mutex_robotStarted;
     RT_MUTEX mutex_move;
+    RT_MUTEX mutex_camera;
+    RT_MUTEX mutex_cameraStarted;
 
     /**********************************************************************/
     /* Semaphores                                                         */
@@ -93,6 +98,7 @@ private:
     RT_SEM sem_openComRobot;
     RT_SEM sem_serverOk;
     RT_SEM sem_startRobot;
+    RT_SEM sem_startCamera;
 
     /**********************************************************************/
     /* Message queues                                                     */
@@ -134,9 +140,14 @@ private:
     void MoveTask(void *arg);
     
     /**
-     * @brief Thread handling battery level of the rbbot.
+     * @brief Thread handling battery level of the robot.
      */
     void BatteryTask(void *arg);
+    
+    /**
+     * @brief Thread starting the communication with the camera.
+     */
+    void StartCameraTask(void *arg);
     
     /**********************************************************************/
     /* Queue services                                                     */
