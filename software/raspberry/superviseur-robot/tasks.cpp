@@ -75,11 +75,15 @@ void Tasks::Init() {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_mutex_create(&mutex_comFailure, NULL)) {
+    if (err = rt_mutex_create(&mutex_camera, NULL)) {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_mutex_create(&mutex_cameraOn, NULL)) {
+    if (err = rt_mutex_create(&mutex_cameraStarted, NULL)) {
+        cerr << "Error mutex create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_mutex_create(&mutex_comFailure, NULL)) {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -101,6 +105,10 @@ void Tasks::Init() {
         exit(EXIT_FAILURE);
     }
     if (err = rt_sem_create(&sem_startRobot, NULL, 0, S_FIFO)) {
+        cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_sem_create(&sem_startCamera, NULL, 0, S_FIFO)) {
         cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -137,7 +145,12 @@ void Tasks::Init() {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+
     if (err = rt_task_create(&th_watchdogReset, "th_watchdogReset", 0, PRIORITY_TWDRST, 0)) {
+        cerr << "Error task create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_create(&th_startCamera, "th_startCamera", 0, PRIORITY_TCAMERA, 0)) {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -189,7 +202,12 @@ void Tasks::Run() {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+
     if (err = rt_task_start(&th_watchdogReset, (void(*)(void*)) & Tasks::WatchdogResetTask, this)) {
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_start(&th_startCamera, (void(*)(void*)) & Tasks::StartCameraTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -300,6 +318,8 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             withWD = 0;
             rt_mutex_release(&mutex_withWD);
             rt_sem_v(&sem_startRobot);
+        } else if (msgRcv->CompareID(MESSAGE_CAM_OPEN)) {
+            rt_sem_v(&sem_startCamera);
         } else if (msgRcv->CompareID(MESSAGE_ROBOT_GO_FORWARD) ||
                 msgRcv->CompareID(MESSAGE_ROBOT_GO_BACKWARD) ||
                 msgRcv->CompareID(MESSAGE_ROBOT_GO_LEFT) ||
@@ -459,17 +479,11 @@ void Tasks::BatteryTask(void *arg) {
     }
 }
 
+
 void Tasks::WatchdogResetTask(void * arg){
     int rs;
     int wd;
     Message * ack;
-    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
-    // Synchronization barrier (waiting that all tasks are starting)
-    rt_sem_p(&sem_barrier, TM_INFINITE);
-    
-    /**************************************************************************************/
-    /* The task starts here                                                               */
-    /**************************************************************************************/
     rt_task_set_periodic(NULL, TM_NOW, 100000000);
     while(1) {
         rt_task_wait_period(NULL);
@@ -489,7 +503,29 @@ void Tasks::WatchdogResetTask(void * arg){
     }
 }
 
-
+void Tasks::StartCameraTask(void *arg) {
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    // Synchronization barrier (waiting that all tasks are starting)
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+    
+    /**************************************************************************************/
+    /* The task starts here                                                               */
+    /**************************************************************************************/
+    while(1) {
+        rt_sem_p(&sem_startCamera, TM_INFINITE);
+        rt_mutex_acquire(&mutex_camera, TM_INFINITE);
+        bool cameraOpened = camera.Open();
+        rt_mutex_release(&mutex_camera);
+        if (cameraOpened) {
+            rt_mutex_acquire(&mutex_cameraStarted, TM_INFINITE);
+            cameraStarted = true;
+            rt_mutex_release(&mutex_cameraStarted);
+            cout << "Camera start success" << endl << flush;
+        } else {
+            cout << "Camera start fail" << endl << flush;
+        }
+    }
+}
 Message* Tasks::WriteToRobot(Message * msg){
     int status;
     int cf;

@@ -69,6 +69,8 @@ private:
     int comFailure = 0;
     int withWD = 0;
     int move = MESSAGE_ROBOT_STOP;
+    Camera camera;
+    bool cameraStarted = false;
     
     /**********************************************************************/
     /* Tasks                                                              */
@@ -81,6 +83,7 @@ private:
     RT_TASK th_move;
     RT_TASK th_batteryLevel;
     RT_TASK th_watchdogReset;
+    RT_TASK th_startCamera;
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -89,9 +92,13 @@ private:
     RT_MUTEX mutex_robot;
     RT_MUTEX mutex_robotStarted;
     RT_MUTEX mutex_move;
+    RT_MUTEX mutex_camera;
+    RT_MUTEX mutex_cameraStarted;
     RT_MUTEX mutex_comFailure;
     RT_MUTEX mutex_cameraOn;
     RT_MUTEX mutex_withWD;
+
+
 
     /**********************************************************************/
     /* Semaphores                                                         */
@@ -100,6 +107,7 @@ private:
     RT_SEM sem_openComRobot;
     RT_SEM sem_serverOk;
     RT_SEM sem_startRobot;
+    RT_SEM sem_startCamera;
 
     /**********************************************************************/
     /* Message queues                                                     */
@@ -146,6 +154,11 @@ private:
     void BatteryTask(void *arg);
     
     void WatchdogResetTask(void * arg);
+
+    /**
+     * @brief Thread starting the communication with the camera.
+     */
+    void StartCameraTask(void *arg);
     
     Message* WriteToRobot(Message * msg);
     
