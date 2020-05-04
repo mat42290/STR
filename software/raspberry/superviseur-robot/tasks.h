@@ -108,6 +108,7 @@ private:
     RT_SEM sem_serverOk;
     RT_SEM sem_startRobot;
     RT_SEM sem_startCamera;
+    RT_SEM sem_watchdogReset;
 
     /**********************************************************************/
     /* Message queues                                                     */

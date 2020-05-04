@@ -87,6 +87,11 @@ void Tasks::Init() {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_mutex_create(&mutex_withWD, NULL)) {
+        cerr << "Error mutex create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    
     cout << "Mutexes created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -105,6 +110,10 @@ void Tasks::Init() {
         exit(EXIT_FAILURE);
     }
     if (err = rt_sem_create(&sem_startRobot, NULL, 0, S_FIFO)) {
+        cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_sem_create(&sem_watchdogReset, NULL, 0, S_FIFO)) {
         cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -485,8 +494,11 @@ void Tasks::WatchdogResetTask(void * arg){
     int wd;
     Message * ack;
     rt_task_set_periodic(NULL, TM_NOW, 100000000);
+    rt_sem_p(&sem_barrier, TM_INFINITE);
     while(1) {
+        
         rt_task_wait_period(NULL);
+        rt_sem_p(&sem_watchdogReset, TM_INFINITE);
         cout << "Periodic watchdog reset" << endl << flush;
         
         rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
