@@ -75,6 +75,7 @@ private:
     /**********************************************************************/
     /* Tasks                                                              */
     /**********************************************************************/
+    RT_TASK th_restart;
     RT_TASK th_server;
     RT_TASK th_sendToMon;
     RT_TASK th_receiveFromMon;
@@ -120,10 +121,13 @@ private:
     /* Tasks' functions                                                   */
     /**********************************************************************/
     /**
+    * @brief Thread restarting all other tasks
+    */
+    void RestartTasks(void *arg);
+    /**
      * @brief Thread handling server communication with the monitor.
      */
     void ServerTask(void *arg);
-     
     /**
      * @brief Thread sending data to monitor.
      */

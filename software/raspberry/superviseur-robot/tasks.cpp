@@ -19,6 +19,7 @@
 #include <stdexcept>
 
 // Déclaration des priorités des taches
+#define PRIORITY_TRESTART 30
 #define PRIORITY_TSERVER 30
 #define PRIORITY_TOPENCOMROBOT 20
 #define PRIORITY_TMOVE 20
@@ -230,6 +231,7 @@ void Tasks::Run() {
 void Tasks::Stop() {
     monitor.Close();
     robot.Close();
+    camera.Close();
 }
 
 /**
@@ -293,10 +295,36 @@ void Tasks::SendToMonTask(void* arg) {
 }
 
 /**
+ * @brief Thread restarting all other tasks
+ */
+void Tasks::RestartTasks(void *arg) {
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+
+    rt_task_delete(&th_sendToMon);
+    rt_task_delete(&th_openComRobot);
+    rt_task_delete(&th_receiveFromMon);
+    rt_task_delete(&th_startRobot);
+    rt_task_delete(&th_move);
+    rt_task_delete(&th_batteryLevel);
+    rt_task_delete(&th_watchdogReset);
+    rt_task_delete(&th_startCamera);
+    rt_queue_delete(&q_messageToMon);
+
+    this->Init();
+    this->Run();
+    rt_sem_broadcast(&sem_barrier);
+    //this->Join();
+
+    rt_task_delete(&th_restart);
+}
+
+/**
  * @brief Thread receiving data from monitor.
  */
 void Tasks::ReceiveFromMonTask(void *arg) {
     Message *msgRcv;
+    int status;
+    int err;
     
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     // Synchronization barrier (waiting that all tasks are starting)
@@ -313,8 +341,20 @@ void Tasks::ReceiveFromMonTask(void *arg) {
         cout << "Rcv <= " << msgRcv->ToString() << endl << flush;
 
         if (msgRcv->CompareID(MESSAGE_MONITOR_LOST)) {
-            delete(msgRcv);
-            exit(-1);
+            
+            this->Stop();
+            
+            if (err = rt_task_create(&th_restart, "th_restart", 0, PRIORITY_TRESTART, 0)) {
+                cerr << "Error task create: " << strerror(-err) << endl << flush;
+                exit(EXIT_FAILURE);
+            }
+            
+            if (err = rt_task_start(&th_restart, (void(*)(void*)) & Tasks::RestartTasks, this)) {
+                cerr << "Error task start: " << strerror(-err) << endl << flush;
+                exit(EXIT_FAILURE);
+            }
+            
+            rt_task_suspend(&th_receiveFromMon);
         } else if (msgRcv->CompareID(MESSAGE_ROBOT_COM_OPEN)) {
             rt_sem_v(&sem_openComRobot);
         } else if (msgRcv->CompareID(MESSAGE_ROBOT_START_WITH_WD)) {
@@ -541,37 +581,40 @@ void Tasks::StartCameraTask(void *arg) {
 Message* Tasks::WriteToRobot(Message * msg){
     int status;
     int cf;
+    int err;
+    int rs;
     
     rt_mutex_acquire(&mutex_robot, TM_INFINITE);
     Message* answer = robot.Write(msg);
     cout << "Count comFailure: " << comFailure << endl << flush;
     if(answer->CompareID(MESSAGE_ANSWER_ROBOT_ERROR) ||
         answer->CompareID(MESSAGE_ANSWER_ROBOT_TIMEOUT)){
-        
+
         rt_mutex_acquire(&mutex_comFailure, TM_INFINITE);
         comFailure++;
         cf = comFailure;
         rt_mutex_release(&mutex_comFailure);
-        
+
         if(cf>3){
             cout << endl << endl << endl;
             cout << "More than 3 consecutives failures, restart" << endl<< flush;
             cout << endl << endl << endl << flush;
-            
-            Message * msgSend;
-            msgSend = new Message(MESSAGE_MONITOR_LOST);
-            WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon
-            
-            cout << "Close serial com (";
-            rt_mutex_acquire(&mutex_robot, TM_INFINITE);
-            status = robot.Close();
-            rt_mutex_release(&mutex_robot);
-            cout << status;
-            cout << ")" << endl << flush;
-            
+
             rt_mutex_acquire(&mutex_comFailure, TM_INFINITE);
             comFailure = 0;
             rt_mutex_release(&mutex_comFailure);
+
+            /*Message * msgSend;
+            msgSend = new Message(MESSAGE_MONITOR_LOST);
+            WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon*/
+
+            rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
+            robotStarted = 0;
+            rt_mutex_release(&mutex_robotStarted);
+
+            robot.Close();
+
+            rt_sem_broadcast(&sem_startRobot);
         }
     }
     else{
