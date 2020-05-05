@@ -378,8 +378,20 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             rt_mutex_acquire(&mutex_move, TM_INFINITE);
             move = msgRcv->GetID();
             rt_mutex_release(&mutex_move);
+        } else if (msgRcv->CompareID(MESSAGE_ROBOT_RESET)) {
+            Message * msgSend;
+            msgSend = new Message(MESSAGE_ANSWER_NACK);
+            WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon
+            
+            rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
+            robotStarted = 0;
+            rt_mutex_release(&mutex_robotStarted);
+
+            robot.Close();
+
+            rt_sem_broadcast(&sem_startRobot);
         }
-        delete(msgRcv); // mus be deleted manually, no consumer
+        delete(msgRcv); // must be deleted manually, no consumer
     }
 }
 
@@ -508,7 +520,7 @@ void Tasks::BatteryTask(void *arg) {
     /**************************************************************************************/
     /* The task starts here                                                               */
     /**************************************************************************************/
-    rt_task_set_periodic(NULL, TM_NOW, 500000000);
+    rt_task_set_periodic(NULL, 100000000, 500000000);
     
     while(1) {
         rt_task_wait_period(NULL);
@@ -606,9 +618,9 @@ Message* Tasks::WriteToRobot(Message * msg){
             comFailure = 0;
             rt_mutex_release(&mutex_comFailure);
 
-            /*Message * msgSend;
-            msgSend = new Message(MESSAGE_MONITOR_LOST);
-            WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon*/
+            Message * msgSend;
+            msgSend = new Message(MESSAGE_ANSWER_NACK);
+            WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon
 
             rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
             robotStarted = 0;
