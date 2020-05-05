@@ -533,8 +533,10 @@ void Tasks::WatchdogResetTask(void * arg){
     int rs;
     int wd;
     Message * ack;
-    rt_task_set_periodic(NULL, TM_NOW, 100000000);
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     rt_sem_p(&sem_barrier, TM_INFINITE);
+    rt_task_set_periodic(NULL, TM_NOW, 100000000);
+    
     while(1) {
         
         rt_task_wait_period(NULL);
