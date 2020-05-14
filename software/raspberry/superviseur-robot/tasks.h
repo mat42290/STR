@@ -65,6 +65,8 @@ private:
     ComMonitor monitor;
     ComRobot robot;
     int robotStarted = 0;
+    int comOpened = 0;
+    int monitorOK = 0;
     int cameraOn = 0;
     int comFailure = 0;
     int withWD = 0;
@@ -92,6 +94,8 @@ private:
     RT_MUTEX mutex_monitor;
     RT_MUTEX mutex_robot;
     RT_MUTEX mutex_robotStarted;
+    RT_MUTEX mutex_comOpened;
+    RT_MUTEX mutex_monitorOK;
     RT_MUTEX mutex_move;
     RT_MUTEX mutex_camera;
     RT_MUTEX mutex_cameraStarted;
@@ -110,6 +114,7 @@ private:
     RT_SEM sem_startRobot;
     RT_SEM sem_startCamera;
     RT_SEM sem_watchdogReset;
+    RT_SEM sem_restart;
 
     /**********************************************************************/
     /* Message queues                                                     */
