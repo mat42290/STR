@@ -309,30 +309,6 @@ void Tasks::SendToMonTask(void* arg) {
 }
 
 /**
- * @brief Thread restarting all other tasks
- */
-void Tasks::RestartTasks(void *arg) {
-    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
-
-    rt_task_delete(&th_sendToMon);
-    rt_task_delete(&th_openComRobot);
-    rt_task_delete(&th_receiveFromMon);
-    rt_task_delete(&th_startRobot);
-    rt_task_delete(&th_move);
-    rt_task_delete(&th_batteryLevel);
-    rt_task_delete(&th_watchdogReset);
-    rt_task_delete(&th_startCamera);
-    rt_queue_delete(&q_messageToMon);
-
-    this->Init();
-    this->Run();
-    rt_sem_broadcast(&sem_barrier);
-    //this->Join();
-
-    rt_task_delete(&th_restart);
-}
-
-/**
  * @brief Thread receiving data from monitor.
  */
 void Tasks::ReceiveFromMonTask(void *arg) {
@@ -366,20 +342,6 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             rt_sem_broadcast(&sem_restart);
             rt_sem_p(&sem_serverOk,TM_INFINITE);
             cout << "CONNECTION BACK ON LINE" << endl << flush;
-            
-            /*
-            if (err = rt_task_create(&th_restart, "th_restart", 0, PRIORITY_TRESTART, 0)) {
-                cerr << "Error task create: " << strerror(-err) << endl << flush;
-                exit(EXIT_FAILURE);
-            }
-            
-            if (err = rt_task_start(&th_restart, (void(*)(void*)) & Tasks::RestartTasks, this)) {
-                cerr << "Error task start: " << strerror(-err) << endl << flush;
-                exit(EXIT_FAILURE);
-            }
-            
-            rt_task_suspend(&th_receiveFromMon);
-             */
             
         } else if (msgRcv->CompareID(MESSAGE_ROBOT_COM_OPEN)) {
             rt_sem_v(&sem_openComRobot);

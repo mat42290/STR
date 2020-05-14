@@ -126,10 +126,6 @@ private:
     /* Tasks' functions                                                   */
     /**********************************************************************/
     /**
-    * @brief Thread restarting all other tasks
-    */
-    void RestartTasks(void *arg);
-    /**
      * @brief Thread handling server communication with the monitor.
      */
     void ServerTask(void *arg);
