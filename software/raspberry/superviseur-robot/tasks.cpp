@@ -28,7 +28,7 @@
 #define PRIORITY_TSTARTROBOT 20
 #define PRIORITY_TCAMERA 21
 #define PRIORITY_TBATTERYLEVEL 20
-#define PRIORITY_TWDRST 20
+#define PRIORITY_TWDRST 26
 
 /*
  * Some remarks:
@@ -334,17 +334,27 @@ void Tasks::ReceiveFromMonTask(void *arg) {
         if (msgRcv->CompareID(MESSAGE_MONITOR_LOST)) {
             cout << "LOST CONNECTION WITH MONITOR HELP" << endl << flush;
             rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
-            robotStarted = 0;
+            if(robotStarted){
+                robotStarted = 0;
+                WriteToRobot(robot.Reset(),0);
+            }
             rt_mutex_release(&mutex_robotStarted);
-            WriteToRobot(robot.Reset());
             monitor.Close();
-
             rt_sem_broadcast(&sem_restart);
             rt_sem_p(&sem_serverOk,TM_INFINITE);
             cout << "CONNECTION BACK ON LINE" << endl << flush;
             
         } else if (msgRcv->CompareID(MESSAGE_ROBOT_COM_OPEN)) {
-            rt_sem_v(&sem_openComRobot);
+            rt_mutex_acquire(&mutex_comOpened, TM_INFINITE);
+            if(!comOpened){
+                rt_mutex_release(&mutex_comOpened);
+                rt_sem_v(&sem_openComRobot);
+            }
+            else{
+                Message *msgSend = new Message(MESSAGE_ANSWER_ACK);
+                WriteInQueue(&q_messageToMon, msgSend);
+                rt_mutex_release(&mutex_comOpened);
+            }
         } else if (msgRcv->CompareID(MESSAGE_ROBOT_START_WITH_WD)) {
             cout << "MON ASKS START WD" << endl << flush;
             rt_mutex_acquire(&mutex_withWD,TM_INFINITE);
@@ -377,7 +387,7 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             robotStarted = 0;
             rt_mutex_release(&mutex_robotStarted);
 
-            WriteToRobot(robot.Reset());
+            WriteToRobot(robot.Reset(),0);
         }
         delete(msgRcv); // must be deleted manually, no consumer
     }
@@ -457,18 +467,18 @@ void Tasks::StartRobotTask(void *arg) {
         if(!rs){
             if(wd == 0){
                 cout << "Start robot without watchdog (";
-                msgSend = WriteToRobot(robot.StartWithoutWD());
+                msgSend = WriteToRobot(robot.StartWithoutWD(),1);
             }
             else{
                 cout << "Start robot with watchdog (";
-                msgSend = WriteToRobot(robot.StartWithWD());
+                msgSend = WriteToRobot(robot.StartWithWD(),1);
             }
             cout << msgSend->GetID();
             cout << ")" << endl;
 
             cout << "Start answer: " << msgSend->ToString() << endl << flush;
             WriteInQueue(&q_messageToMon, msgSend);  // msgSend will be deleted by sendToMon
-
+            
             if (msgSend->GetID() == MESSAGE_ANSWER_ACK) {
                 rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
                 robotStarted = 1;
@@ -511,7 +521,7 @@ void Tasks::MoveTask(void *arg) {
             
             cout << " move: " << cpMove << endl << flush;
             
-            Message* answer = WriteToRobot(new Message((MessageID)cpMove));
+            Message* answer = WriteToRobot(new Message((MessageID)cpMove),0);
         }
     }
 }
@@ -538,7 +548,7 @@ void Tasks::BatteryTask(void *arg) {
         rs = robotStarted;
         rt_mutex_release(&mutex_robotStarted);
         if (rs == 1) {
-            Message* batteryLevel = WriteToRobot(new Message(MESSAGE_ROBOT_BATTERY_GET));
+            Message* batteryLevel = WriteToRobot(new Message(MESSAGE_ROBOT_BATTERY_GET),0);
             cout << "Battery level:" << batteryLevel->ToString() << endl << flush;
             
             // On ne forward pas le message si c'est un message d'erreur sinon on perd la connection
@@ -561,17 +571,15 @@ void Tasks::WatchdogResetTask(void * arg){
     while(1) {
         
         rt_task_wait_period(NULL);
-        
         rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
         rs = robotStarted;
         rt_mutex_release(&mutex_robotStarted);
-        
         rt_mutex_acquire(&mutex_withWD, TM_INFINITE);
         wd = withWD;
         rt_mutex_release(&mutex_withWD);
         if (rs == 1 && wd == 1) {
             cout << "Periodic watchdog reset" << endl << flush;
-            ack = WriteToRobot(robot.ReloadWD());
+            ack = WriteToRobot(robot.ReloadWD(),0);
             cout << "ACK WDRST " << ack->ToString() << endl <<flush;
         }
     }
@@ -600,7 +608,7 @@ void Tasks::StartCameraTask(void *arg) {
         }
     }
 }
-Message* Tasks::WriteToRobot(Message * msg){
+Message* Tasks::WriteToRobot(Message * msg,char ack){
     int status;
     int cf;
     int err;
@@ -608,9 +616,11 @@ Message* Tasks::WriteToRobot(Message * msg){
     
     rt_mutex_acquire(&mutex_robot, TM_INFINITE);
     Message* answer = robot.Write(msg);
-    cout << "Count comFailure: " << comFailure << endl << flush;
+    
     if(answer->CompareID(MESSAGE_ANSWER_ROBOT_ERROR) ||
-        answer->CompareID(MESSAGE_ANSWER_ROBOT_TIMEOUT)){
+        answer->CompareID(MESSAGE_ANSWER_ROBOT_TIMEOUT) ||
+            answer->CompareID(MESSAGE_ANSWER_NACK) ||
+            answer->CompareID(MESSAGE_ANSWER_COM_ERROR)){
 
         rt_mutex_acquire(&mutex_comFailure, TM_INFINITE);
         comFailure++;
@@ -625,11 +635,11 @@ Message* Tasks::WriteToRobot(Message * msg){
             rt_mutex_acquire(&mutex_comFailure, TM_INFINITE);
             comFailure = 0;
             rt_mutex_release(&mutex_comFailure);
-
-            Message * msgSend;
-            msgSend = new Message(MESSAGE_ANSWER_NACK);
-            WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon
-
+            if(ack){
+                Message * msgSend;
+                msgSend = new Message(MESSAGE_ANSWER_COM_ERROR);
+                WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon
+            }
             rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
             robotStarted = 0;
             rt_mutex_release(&mutex_robotStarted);
@@ -638,13 +648,12 @@ Message* Tasks::WriteToRobot(Message * msg){
             rt_mutex_acquire(&mutex_comOpened, TM_INFINITE);
             comOpened = 0;
             rt_mutex_release(&mutex_comOpened);
-            
-            
         }
     }
     else{
         comFailure = 0;
     }
+    cout << "Count comFailure: " << comFailure << endl << flush;
     rt_mutex_release(&mutex_robot);
     return answer;
 }
@@ -656,10 +665,12 @@ Message* Tasks::WriteToRobot(Message * msg){
  */
 void Tasks::WriteInQueue(RT_QUEUE *queue, Message *msg) {
     int err;
+    
     if ((err = rt_queue_write(queue, (const void *) &msg, sizeof ((const void *) &msg), Q_NORMAL)) < 0) {
         cerr << "Write in queue failed: " << strerror(-err) << endl << flush;
         throw std::runtime_error{"Error in write in queue"};
     }
+    
 }
 
 /**

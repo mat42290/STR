@@ -77,7 +77,6 @@ private:
     /**********************************************************************/
     /* Tasks                                                              */
     /**********************************************************************/
-    RT_TASK th_restart;
     RT_TASK th_server;
     RT_TASK th_sendToMon;
     RT_TASK th_receiveFromMon;
@@ -166,7 +165,7 @@ private:
      */
     void StartCameraTask(void *arg);
     
-    Message* WriteToRobot(Message * msg);
+    Message* WriteToRobot(Message * msg,char ack);
     
     /**********************************************************************/
     /* Queue services                                                     */
